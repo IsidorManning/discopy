@@ -534,10 +534,26 @@ class Hypergraph(Composable, Whiskerable, NamedGeneric['category', 'functor']):
         >>> g = Box('g', x, Ty()).to_hypergraph()
         >>> assert (f >> g).interchange(0, 1).simplify() == f >> g
         """
+        def diagram_size(diagram):
+            result = len(diagram)
+            boxes = sum([
+                list(getattr(layer, "boxes", (layer, )))
+                for layer in getattr(diagram, "inside", ())], [])
+            for box in boxes:
+                for attr in ("arg", "args"):
+                    if not hasattr(box, attr):
+                        continue
+                    args = getattr(box, attr)
+                    if attr == "arg":
+                        args = (args, )
+                    result += sum(map(diagram_size, args))
+            return result
+
+        size = diagram_size(self.to_diagram())
         for i in range(len(self.boxes)):
             for j in range(len(self.boxes)):
                 result = self.interchange(i, j)
-                if len(result.to_diagram()) < len(self.to_diagram()):
+                if diagram_size(result.to_diagram()) < size:
                     return result.simplify()
         return self
 
@@ -734,7 +750,11 @@ class Hypergraph(Composable, Whiskerable, NamedGeneric['category', 'functor']):
             boxes = boxes[:depth] + [self.category.ar.spider_factory(
                 len(input_wires), len(output_wires), typ)] + boxes[depth:]
             offsets = self.offsets[:depth] + (None, ) + self.offsets[depth:]
-            for j, port in enumerate(input_wires.union(output_wires)):
+            port_key = lambda port: (
+                getattr(self.ports[port], "i", port), port)
+            ports = tuple(sorted(input_wires, key=port_key))\
+                + tuple(sorted(output_wires, key=port_key))
+            for j, port in enumerate(ports):
                 f_wires[port] = len(spider_types) + j
             i = len(self.dom) + len(
                 sum([sum(ports, ()) for ports in self.box_wires[:depth]], ()))
